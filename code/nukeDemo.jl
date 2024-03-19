@@ -1,5 +1,4 @@
-using GLPK, Cbc, JuMP, SparseArrays, CSV, DataFrames, Ipopt
-
+using GLPK, Cbc, JuMP, SparseArrays, CSV, DataFrames
 df = CSV.read("C:/Users/Frederik Danielsen/Documents/Skole/Universitet/DTU/Perioder/Semester 6/Mathematical Modeling/Exercises/Exercise 3 - Quattara Depression/MathMod02526_QattaraDepression/code/points.csv", DataFrame)
 
 # Access the column named "z"
@@ -11,6 +10,7 @@ H = Array(z_coordinates)
 CHD = 10
 
 K = [[300 140 40],
+
      [500 230 60],
      [1000 400 70]]
 
@@ -21,15 +21,18 @@ end
 
 function solveIP(H, K)
     h = length(H)
-    #myModel = Model(Cbc.Optimizer)
+    myModel = Model(Cbc.Optimizer)
     # If your want ot use GLPK instead use:
-    myModel = Model(GLPK.Optimizer)
-    muModel = Model(Ipopt.Optimizer)
+    #myModel = Model(GLPK.Optimizer)
 
     yields = length(K)
 
     A = [constructA(H, K[1]), constructA(H, K[2]), constructA(H, K[3])]
 
+
+    M = 1000  # Example value, choose based on the context of your problem
+
+    @variable(myModel, z[1:yields, 1:h, 1:h] >= 0)  # New continuous variable
     @variable(myModel, x[1:h], Bin )
     @variable(myModel, b[1:yields, 1:h], Bin )  # Choose yield
     @variable(myModel, y[1:h], Int )
@@ -46,8 +49,13 @@ function solveIP(H, K)
     @constraint(myModel, [j=1:h], 3 >= y[j] )  # choose yield
     @constraint(myModel, [j=1:h-1], 1 >= x[j] + x[j+1])  # not two bombs in a row
     #@constraint(myModel, [i=1:h], R[i] == sum(A[i, j]*x[j] for j=1:h) )
-    @constraint(myModel, [i=1:h], R[i] == sum(x[j]*sum(b[k,j]*A[k][i, j] for k=1:yields) for j=1:h) )  # Version wiht yield option
+    #@constraint(myModel, [i=1:h], R[i] == sum(x[j]*b[k,j]*A[k][i, j] for k=1:yields, for j=1:h) )  # Version wiht yield option
+    @constraint(myModel, [i=1:h], R[i] == sum(z[k, j, i] for k in 1:yields, j in 1:h))
     @constraint(myModel, [j=1:h], sum(b[k,j] for k=1:yields) == 1 )  # Choose yield
+    @constraint(myModel, [i=1:h, j=1:h, k=1:yields], z[k, j, i] <= A[k][i, j] * x[j])
+    @constraint(myModel, [i=1:h, j=1:h, k=1:yields], z[k, j, i] <= M * b[k, j])
+    @constraint(myModel, [i=1:h, j=1:h, k=1:yields], z[k, j, i] >= A[k][i, j] * x[j] - M * (1 - b[k, j]))
+
 
     optimize!(myModel)
 
